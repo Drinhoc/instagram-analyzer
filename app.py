@@ -1,6 +1,6 @@
 """
 INTERFACE WEB DO ANALISADOR DE INSTAGRAM
-Streamlit App - Versão Cloud CORRIGIDA
+Streamlit App - Versão para Railway / Cloud
 """
 
 import streamlit as st
@@ -19,23 +19,50 @@ st.set_page_config(
 )
 
 # ============================================================================
-# CONFIGURAÇÃO - USA SECRETS DO STREAMLIT
+// CONFIGURAÇÃO - USA CONFIG (secrets/env) SEM DEPENDER DE secrets.toml
 # ============================================================================
 
 from config import CONFIG
 
-# Atualiza CONFIG com secrets do Streamlit
-CONFIG["INSTAGRAM_USER"] = st.secrets.get("INSTAGRAM_USER", "")
-CONFIG["INSTAGRAM_PASS"] = st.secrets.get("INSTAGRAM_PASS", "")
-CONFIG["OPENAI_KEY"] = st.secrets.get("OPENAI_KEY", "")
-CONFIG["PLANILHA_ID"] = st.secrets.get("PLANILHA_ID", "")
+def setup_google_credentials():
+    """
+    Configura GOOGLE_CREDENTIALS_FILE a partir de:
+    1) st.secrets["google_credentials"] (se existir, caso Streamlit Cloud)
+    2) Variável de ambiente GOOGLE_CREDENTIALS_JSON (JSON inteiro em string)
+    3) Caso nada exista, não faz nada (e o app continua rodando)
+    """
+    try:
+        credentials_data = None
 
-# Cria credentials.json temporário
-if "google_credentials" in st.secrets:
-    credentials_data = dict(st.secrets["google_credentials"])
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(credentials_data, f)
-        CONFIG["GOOGLE_CREDENTIALS_FILE"] = f.name
+        # 1) Streamlit Cloud: st.secrets
+        try:
+            if hasattr(st, "secrets") and "google_credentials" in st.secrets:
+                credentials_data = dict(st.secrets["google_credentials"])
+        except Exception:
+            pass
+
+        # 2) Railway/local: variável de ambiente
+        if credentials_data is None:
+            creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+            if creds_json:
+                credentials_data = json.loads(creds_json)
+
+        # 3) Se não tiver credencial nenhuma, só sai
+        if not credentials_data:
+            return
+
+        # Cria arquivo temporário com as credenciais
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(credentials_data, f)
+            CONFIG["GOOGLE_CREDENTIALS_FILE"] = f.name
+
+    except Exception:
+        # Não queremos que falha de credencial derrube o app inteiro
+        pass
+
+
+# Chama a configuração opcional das credenciais Google
+setup_google_credentials()
 
 # Importa módulos
 from database import Database
@@ -76,19 +103,19 @@ st.markdown("### Análise inteligente de comentários com GPT-4 💬✨")
 with st.sidebar:
     st.markdown("## ⚙️ Configurações")
 
-    # Verifica credenciais
+    # Verifica credenciais (vindas do CONFIG)
     creds_ok = (
-            CONFIG["INSTAGRAM_USER"] and
-            CONFIG["INSTAGRAM_PASS"] and
-            CONFIG["OPENAI_KEY"] and
-            CONFIG["PLANILHA_ID"]
+        CONFIG.get("INSTAGRAM_USER")
+        and CONFIG.get("INSTAGRAM_PASS")
+        and CONFIG.get("OPENAI_KEY")
+        and CONFIG.get("PLANILHA_ID")
     )
 
     if creds_ok:
         st.success("✅ Credenciais configuradas!")
     else:
-        st.error("❌ Configure as credenciais nos Secrets!")
-        st.info("Settings → Secrets")
+        st.error("❌ Configure as credenciais nas variáveis de ambiente / secrets!")
+        st.info("No Railway: Settings → Variables")
         st.stop()
 
     st.markdown("---")
@@ -158,15 +185,15 @@ with tab1:
 
             status_text.text("🔐 Fazendo login no Instagram...")
 
-            # Login do Instagram - VERSÃO CORRIGIDA
+            # Login do Instagram
             import instagrapi
 
             coletor_client = instagrapi.Client()
             coletor_client.delay_range = [1, 3]
 
             try:
-                username = str(CONFIG["INSTAGRAM_USER"]).strip()
-                password = str(CONFIG["INSTAGRAM_PASS"]).strip()
+                username = str(CONFIG.get("INSTAGRAM_USER", "")).strip()
+                password = str(CONFIG.get("INSTAGRAM_PASS", "")).strip()
 
                 if not username or not password:
                     st.error("❌ Credenciais Instagram vazias!")
@@ -176,14 +203,13 @@ with tab1:
                 status_text.text("✅ Login realizado!")
 
             except Exception as e:
-                st.error(f"❌ Erro no login do Instagram!")
+                st.error("❌ Erro no login do Instagram!")
                 st.error(f"Detalhes: {str(e)}")
-                st.info("💡 Verifique as credenciais nos Secrets!")
+                st.info("💡 Verifique as credenciais nas variáveis de ambiente / secrets.")
                 with st.expander("🔍 Debug Info"):
                     st.write(f"Username length: {len(username) if username else 0}")
                     st.write(f"Password length: {len(password) if password else 0}")
                 st.stop()
-
 
             # Função auxiliar para coletar
             def coletar_perfil(perfil, num_posts):
@@ -191,7 +217,6 @@ with tab1:
                 temp_coletor = ColetorInstagram()
                 temp_coletor.client = coletor_client
                 return temp_coletor.coletar_tudo(perfil, num_posts)
-
 
             analisador = AnalisadorGPT()
             gerador_sheets = GeradorRelatorioSheets()
@@ -210,10 +235,10 @@ with tab1:
                     perfil_existente = db.buscar_perfil(perfil)
 
                     if perfil_existente:
-                        st.info(f"✅ Perfil encontrado no banco")
+                        st.info("✅ Perfil encontrado no banco")
                         perfil_id = perfil_existente['id']
                     else:
-                        st.info(f"🆕 Perfil novo! Primeira análise.")
+                        st.info("🆕 Perfil novo! Primeira análise.")
                         perfil_id = None
 
                     # Coleta
@@ -270,7 +295,11 @@ with tab1:
                         })
 
                 dados_completos = {
-                    'perfil': {'username': perfil, 'seguidores': 0, 'total_posts': stats.get('total_posts', 0)},
+                    'perfil': {
+                        'username': perfil,
+                        'seguidores': 0,
+                        'total_posts': stats.get('total_posts', 0)
+                    },
                     'posts': posts_do_banco
                 }
 
@@ -319,7 +348,11 @@ with tab1:
                         col3.metric(f"{emoji} Sentimento", predominante.capitalize())
 
                     if resultado['url']:
-                        st.link_button("📊 Abrir Google Sheets", resultado['url'], use_container_width=True)
+                        st.link_button(
+                            "📊 Abrir Google Sheets",
+                            resultado['url'],
+                            use_container_width=True
+                        )
 
                     st.markdown("---")
 
@@ -328,7 +361,6 @@ with tab1:
         except Exception as e:
             st.error(f"❌ Erro durante análise: {str(e)}")
             import traceback
-
             with st.expander("Ver detalhes do erro"):
                 st.code(traceback.format_exc())
 
