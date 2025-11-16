@@ -1,6 +1,6 @@
 """
 INTERFACE WEB DO ANALISADOR DE INSTAGRAM
-Streamlit App - Versão Cloud (usa Secrets)
+Streamlit App - Versão Cloud CORRIGIDA
 """
 
 import streamlit as st
@@ -19,49 +19,26 @@ st.set_page_config(
 )
 
 # ============================================================================
-# CONFIGURAÇÃO - USA SECRETS DO STREAMLIT AO INVÉS DE config.py
+# CONFIGURAÇÃO - USA SECRETS DO STREAMLIT
 # ============================================================================
 
-# Cria objeto CONFIG a partir dos secrets
-CONFIG = {
-    "DATABASE_PATH": "instagram_analytics.db",
-    "MODO_INCREMENTAL": True,
-    "INSTAGRAM_USER": st.secrets.get("INSTAGRAM_USER", ""),
-    "INSTAGRAM_PASS": st.secrets.get("INSTAGRAM_PASS", ""),
-    "OPENAI_KEY": st.secrets.get("OPENAI_KEY", ""),
-    "GOOGLE_CREDENTIALS_FILE": "credentials.json",
-    "POSTS_ANALISAR": 5,
-    "DELAY_ENTRE_POSTS": 45,
-    "DELAY_ENTRE_COMENTARIOS": 2,
-    "MODELO_GPT": "gpt-4o-mini",
-    "MAX_TOKENS": 300,
-    "PLANILHA_ID": st.secrets.get("PLANILHA_ID", ""),
-    "COMPARTILHAR_COM_EMAIL": "",
-    "COLETAR_METRICAS_VERIFICADA": False,
-    "SALVAR_JSON_BACKUP": False,
-    "DIR_OUTPUT": "outputs",
-    "DETECTAR_DELETADOS": True,
-    "ATUALIZAR_METRICAS_POSTS": True,
-    "CATEGORIAS": ["elogio", "reclamacao", "duvida", "sugestao", "spam", "outro"],
-    "SENTIMENTOS": ["positivo", "neutro", "negativo"],
-    "INTENTS": ["compra", "informacao", "feedback", "reclamacao", "outro"],
-    "ALERTA_NEGATIVO_LIKES": 10,
-    "ALERTA_SEM_RESPOSTA_HORAS": 24,
-    "DEBUG": False,
-}
+from config import CONFIG
 
-# Cria credentials.json temporário a partir dos secrets
+# Atualiza CONFIG com secrets do Streamlit
+CONFIG["INSTAGRAM_USER"] = st.secrets.get("INSTAGRAM_USER", "")
+CONFIG["INSTAGRAM_PASS"] = st.secrets.get("INSTAGRAM_PASS", "")
+CONFIG["OPENAI_KEY"] = st.secrets.get("OPENAI_KEY", "")
+CONFIG["PLANILHA_ID"] = st.secrets.get("PLANILHA_ID", "")
+
+# Cria credentials.json temporário
 if "google_credentials" in st.secrets:
     credentials_data = dict(st.secrets["google_credentials"])
-
-    # Cria arquivo temporário
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
         json.dump(credentials_data, f)
         CONFIG["GOOGLE_CREDENTIALS_FILE"] = f.name
 
 # Importa módulos
 from database import Database
-from coletor import ColetorInstagram
 from analisador import AnalisadorGPT
 from sheets_reporter import GeradorRelatorioSheets
 
@@ -88,13 +65,6 @@ st.markdown("""
     .stButton>button:hover {
         background-color: #C13584;
     }
-    .success-box {
-        padding: 1rem;
-        border-radius: 10px;
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        margin: 1rem 0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -106,7 +76,7 @@ st.markdown("### Análise inteligente de comentários com GPT-4 💬✨")
 with st.sidebar:
     st.markdown("## ⚙️ Configurações")
 
-    # Verifica se credenciais estão configuradas
+    # Verifica credenciais
     creds_ok = (
             CONFIG["INSTAGRAM_USER"] and
             CONFIG["INSTAGRAM_PASS"] and
@@ -118,7 +88,7 @@ with st.sidebar:
         st.success("✅ Credenciais configuradas!")
     else:
         st.error("❌ Configure as credenciais nos Secrets!")
-        st.info("Settings → Secrets → Cole as credenciais")
+        st.info("Settings → Secrets")
         st.stop()
 
     st.markdown("---")
@@ -182,40 +152,46 @@ with tab1:
 
         # Inicializa componentes
         try:
-            # Atualiza CONFIG com número de posts
             CONFIG['POSTS_ANALISAR'] = num_posts
 
             db = Database(CONFIG["DATABASE_PATH"])
 
             status_text.text("🔐 Fazendo login no Instagram...")
 
-            # Cria coletor com CONFIG
+            # Login do Instagram - VERSÃO CORRIGIDA
             import instagrapi
 
-            coletor = instagrapi.Client()
-            coletor.delay_range = [1, 3]
+            coletor_client = instagrapi.Client()
+            coletor_client.delay_range = [1, 3]
 
             try:
-                coletor.login(CONFIG["INSTAGRAM_USER"], CONFIG["INSTAGRAM_PASS"])
+                username = str(CONFIG["INSTAGRAM_USER"]).strip()
+                password = str(CONFIG["INSTAGRAM_PASS"]).strip()
+
+                if not username or not password:
+                    st.error("❌ Credenciais Instagram vazias!")
+                    st.stop()
+
+                coletor_client.login(username, password)
+                status_text.text("✅ Login realizado!")
+
             except Exception as e:
-                st.error(f"❌ Erro no login do Instagram: {str(e)}")
-                st.info("Verifique suas credenciais nos Secrets!")
+                st.error(f"❌ Erro no login do Instagram!")
+                st.error(f"Detalhes: {str(e)}")
+                st.info("💡 Verifique as credenciais nos Secrets!")
+                with st.expander("🔍 Debug Info"):
+                    st.write(f"Username length: {len(username) if username else 0}")
+                    st.write(f"Password length: {len(password) if password else 0}")
                 st.stop()
 
 
-            # Importa ColetorInstagram (wrapper)
-            class ColetorWrapper:
-                def __init__(self, client):
-                    self.client = client
+            # Função auxiliar para coletar
+            def coletar_perfil(perfil, num_posts):
+                from coletor import ColetorInstagram
+                temp_coletor = ColetorInstagram()
+                temp_coletor.client = coletor_client
+                return temp_coletor.coletar_tudo(perfil, num_posts)
 
-                def coletar_tudo(self, perfil, num_posts):
-                    from coletor import ColetorInstagram
-                    temp_coletor = ColetorInstagram()
-                    temp_coletor.client = self.client
-                    return temp_coletor.coletar_tudo(perfil, num_posts)
-
-
-            coletor_wrapper = ColetorWrapper(coletor)
 
             analisador = AnalisadorGPT()
             gerador_sheets = GeradorRelatorioSheets()
@@ -231,7 +207,6 @@ with tab1:
                 with st.expander(f"📸 {perfil} - Log detalhado", expanded=False):
                     st.write(f"🎯 Coletando dados de {perfil}...")
 
-                    # Verifica se já existe
                     perfil_existente = db.buscar_perfil(perfil)
 
                     if perfil_existente:
@@ -242,7 +217,7 @@ with tab1:
                         perfil_id = None
 
                     # Coleta
-                    dados = coletor_wrapper.coletar_tudo(perfil, num_posts)
+                    dados = coletar_perfil(perfil, num_posts)
                     perfil_id = db.inserir_perfil(dados['perfil'])
 
                     st.write(f"✅ {len(dados['posts'])} posts coletados")
@@ -363,7 +338,6 @@ with tab2:
     try:
         db = Database(CONFIG["DATABASE_PATH"])
 
-        # Lista perfis no banco
         with db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
