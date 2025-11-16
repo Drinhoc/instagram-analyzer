@@ -1,0 +1,18 @@
+# Dependências - Analisador de Instagram v2.0
+# Versões compatíveis com Windows (sem Rust)
+
+# Instagram
+instagrapi==2.0.0
+Pillow>=8.1.1
+
+# OpenAI GPT
+openai==1.30.0
+
+# Google Sheets
+gspread==6.0.0
+google-auth==2.29.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+
+# Utilitários
+python-dateutil==2.9.0
