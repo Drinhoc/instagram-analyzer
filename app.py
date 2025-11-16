@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ============================================================================
-// CONFIGURAÇÃO - USA CONFIG (secrets/env) SEM DEPENDER DE secrets.toml
+# CONFIGURAÇÃO - USA CONFIG (secrets/env) SEM DEPENDER DE secrets.toml
 # ============================================================================
 
 from config import CONFIG
