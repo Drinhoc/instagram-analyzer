@@ -12,8 +12,15 @@ RUN pip install --upgrade pip && \
 # Copia código
 COPY . .
 
+# CRÍTICO: Define variáveis de ambiente do Streamlit
+# Isso SOBRESCREVE as variáveis automáticas do Railway
+ENV STREAMLIT_SERVER_PORT=8501
+ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
+ENV STREAMLIT_SERVER_HEADLESS=true
+ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+
 # Expõe porta
 EXPOSE 8501
 
-# Roda Streamlit na porta 8501 (fixa!)
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+# Roda Streamlit (agora vai usar as ENV acima!)
+CMD ["streamlit", "run", "app.py"]
