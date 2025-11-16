@@ -8,7 +8,7 @@ CONFIG = {
     
     "INSTAGRAM_USER": "papo.fiadobr@gmail.com",
     "INSTAGRAM_PASS": "@Jacarecoruja13",
-    "OPENAI_KEY": "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",
+    "OPENAI_KEY": "OPENAI_KEY": "COLE_SUA_OPENAI_KEY_AQUI",
     "GOOGLE_CREDENTIALS_FILE": "credentials.json",
     
     
