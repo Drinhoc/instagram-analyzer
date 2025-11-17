@@ -1,276 +1,202 @@
 """
-COLETOR DE DADOS DO INSTAGRAM
-Usa Instagrapi para coletar posts e comentários
-Suporta contas normais e verificadas
+Módulo de coleta de dados do Instagram
+Versão 2.0 com PROXY RESIDENCIAL
 """
 
+import instagrapi
 from instagrapi import Client
-from instagrapi.exceptions import LoginRequired, ChallengeRequired, PleaseWaitFewMinutes
+from instagrapi.exceptions import LoginRequired, ChallengeRequired
 import time
 import json
 from datetime import datetime
-from config import CONFIG
+from config import CONFIG, get_proxy_dict
 
 
 class ColetorInstagram:
-    """Classe para coletar dados do Instagram"""
+    """Coleta dados do Instagram usando proxy residencial"""
     
     def __init__(self):
-        self.client = None
-        self.username = CONFIG["INSTAGRAM_USER"]
-        self.password = CONFIG["INSTAGRAM_PASS"]
-        self.eh_conta_verificada = False
+        """Inicializa cliente com proxy se disponível"""
+        self.client = Client()
+        self.client.delay_range = [2, 5]  # Delay entre requests (mais seguro)
         
-    def login(self):
-        """Faz login no Instagram"""
-        print("🔐 Fazendo login no Instagram...")
+        # Configura proxy se disponível
+        proxy_dict = get_proxy_dict()
+        if proxy_dict:
+            # Instagrapi usa requests internamente, então setamos proxies
+            self.client.set_proxy(proxy_dict["https"])
+            print(f"✅ Proxy configurado: {CONFIG['PROXY_HOST']}")
+        else:
+            print("⚠️ Rodando SEM proxy (pode dar bloqueio!)")
+    
+    def fazer_login(self, username=None, password=None):
+        """Faz login no Instagram com tratamento de erros"""
+        username = username or CONFIG["INSTAGRAM_USER"]
+        password = password or CONFIG["INSTAGRAM_PASS"]
         
         try:
-            self.client = Client()
-            self.client.delay_range = [1, 3]
+            print(f"🔐 Fazendo login como {username}...")
             
-            # Tenta fazer login
-            self.client.login(self.username, self.password)
+            # Tenta carregar sessão salva (se existir)
+            try:
+                self.client.load_settings("session.json")
+                self.client.login(username, password)
+                print("✅ Login realizado com sessão salva!")
+            except:
+                # Login fresh
+                self.client.login(username, password)
+                # Salva sessão
+                self.client.dump_settings("session.json")
+                print("✅ Login realizado! Sessão salva.")
             
-            # Verifica se é conta comercial/verificada
-            if CONFIG["COLETAR_METRICAS_VERIFICADA"]:
-                self._verificar_tipo_conta()
-            
-            print(f"✅ Login realizado! (@{self.username})")
             return True
             
-        except ChallengeRequired:
-            print("\n⚠️  Instagram pediu verificação de segurança.")
-            print("    Solução:")
-            print("    1. Abra o app do Instagram no celular")
-            print("    2. Faça login normalmente")
-            print("    3. Tente rodar o script novamente")
+        except ChallengeRequired as e:
+            print(f"⚠️ Instagram pediu verificação: {e}")
+            print("💡 Entre no Instagram pelo app/navegador e confirme que é você!")
             return False
             
-        except LoginRequired:
-            print("❌ Erro de login. Verifique usuário e senha no config.py")
+        except LoginRequired as e:
+            print(f"❌ Erro de login: {e}")
+            print("💡 Verifique suas credenciais!")
             return False
             
         except Exception as e:
-            print(f"❌ Erro ao fazer login: {e}")
-            return False
-    
-    def _verificar_tipo_conta(self):
-        """Verifica se a conta logada tem acesso a métricas extras"""
-        try:
-            user_id = self.client.user_id_from_username(self.username)
-            info = self.client.user_info(user_id)
+            erro_msg = str(e).lower()
             
-            if info.is_business:
-                self.eh_conta_verificada = True
-                print("    ✨ Conta comercial detectada - métricas extras disponíveis!")
+            if "checkpoint" in erro_msg or "challenge" in erro_msg:
+                print(f"⚠️ Conta com checkpoint/verificação!")
+                print("💡 Resolva no app do Instagram primeiro!")
+            elif "ip" in erro_msg or "blacklist" in erro_msg:
+                print(f"⚠️ IP bloqueado!")
+                if get_proxy_dict():
+                    print("💡 Mesmo com proxy, tente mudar de proxy ou aguardar!")
+                else:
+                    print("💡 CONFIGURE UM PROXY RESIDENCIAL!")
             else:
-                print("    ℹ️  Conta pessoal - métricas básicas apenas")
-                
-        except:
-            pass
+                print(f"❌ Erro desconhecido: {e}")
+            
+            return False
     
-    def buscar_perfil_info(self, username):
+    def buscar_perfil(self, username):
         """Busca informações do perfil"""
-        try:
-            username = username.replace("@", "")
-            
-            user_id = self.client.user_id_from_username(username)
-            info = self.client.user_info(user_id)
-            
-            perfil_data = {
-                "username": info.username,
-                "nome_completo": info.full_name,
-                "biografia": info.biography,
-                "seguidores": info.follower_count,
-                "seguindo": info.following_count,
-                "total_posts": info.media_count,
-                "eh_comercial": info.is_business,
-                "eh_verificado": info.is_verified,
-            }
-            
-            return perfil_data
-            
-        except Exception as e:
-            print(f"⚠️  Erro ao buscar perfil {username}: {e}")
-            return None
-    
-    def coletar_posts_recentes(self, username, quantidade=10):
-        """Coleta os últimos N posts de um perfil"""
-        print(f"\n📸 Coletando últimos {quantidade} posts de @{username}...")
+        username = username.replace("@", "")
         
         try:
-            username = username.replace("@", "")
-            user_id = self.client.user_id_from_username(username)
+            print(f"🔍 Buscando perfil @{username}...")
+            user_info = self.client.user_info_by_username(username)
             
-            # Busca posts
+            perfil = {
+                'username': user_info.username,
+                'full_name': user_info.full_name,
+                'bio': user_info.biography,
+                'seguidores': user_info.follower_count,
+                'seguindo': user_info.following_count,
+                'total_posts': user_info.media_count,
+                'foto_perfil': user_info.profile_pic_url.unicode_string() if user_info.profile_pic_url else None,
+                'verificado': user_info.is_verified,
+                'privado': user_info.is_private,
+            }
+            
+            print(f"✅ Perfil encontrado: {perfil['seguidores']} seguidores")
+            return perfil
+            
+        except Exception as e:
+            print(f"❌ Erro ao buscar perfil: {e}")
+            raise
+    
+    def coletar_posts(self, username, quantidade=5):
+        """Coleta posts recentes do perfil"""
+        username = username.replace("@", "")
+        
+        try:
+            print(f"📸 Coletando {quantidade} posts de @{username}...")
+            
+            user_id = self.client.user_id_from_username(username)
             medias = self.client.user_medias(user_id, amount=quantidade)
             
-            posts_dados = []
-            
-            for i, media in enumerate(medias, 1):
-                print(f"  📄 Post {i}/{len(medias)}: {media.code}")
-                
-                post_info = {
-                    "id": media.id,
-                    "codigo": media.code,
-                    "url": f"https://www.instagram.com/p/{media.code}/",
-                    "tipo": self._tipo_post_nome(media.media_type),
-                    "caption": media.caption_text if media.caption_text else "",
-                    "data": media.taken_at.isoformat(),
-                    "likes": media.like_count,
-                    "comentarios_count": media.comment_count,
-                    "visualizacoes": media.play_count if hasattr(media, 'play_count') else 0,
+            posts = []
+            for media in medias:
+                post = {
+                    'codigo': media.code,
+                    'url': f"https://www.instagram.com/p/{media.code}/",
+                    'tipo': media.media_type.name if hasattr(media.media_type, 'name') else str(media.media_type),
+                    'caption': media.caption_text if media.caption_text else "",
+                    'likes': media.like_count,
+                    'comentarios_count': media.comment_count,
+                    'data_post': media.taken_at.isoformat() if media.taken_at else None,
+                    'comentarios': []
                 }
-                
-                # Métricas extras se for conta verificada
-                if self.eh_conta_verificada and CONFIG["COLETAR_METRICAS_VERIFICADA"]:
-                    try:
-                        insights = self.client.insights_media(media.id)
-                        post_info.update({
-                            "alcance": insights.get('reach', 0),
-                            "impressoes": insights.get('impressions', 0),
-                            "salvamentos": insights.get('saved', 0),
-                        })
-                    except:
-                        pass  # Se falhar, ignora
-                
-                posts_dados.append(post_info)
-                
-                # Delay entre posts
-                if i < len(medias):
-                    time.sleep(CONFIG["DELAY_ENTRE_POSTS"])
+                posts.append(post)
             
-            print(f"✅ {len(posts_dados)} posts coletados!")
-            return posts_dados
+            print(f"✅ {len(posts)} posts coletados!")
+            return posts
             
         except Exception as e:
             print(f"❌ Erro ao coletar posts: {e}")
-            return []
+            raise
     
-    def coletar_comentarios_post(self, media_id):
-        """Coleta TODOS os comentários de um post"""
+    def coletar_comentarios(self, codigo_post, max_comentarios=100):
+        """Coleta comentários de um post"""
         try:
-            print(f"    💬 Coletando comentários...")
+            print(f"💬 Coletando comentários do post {codigo_post}...")
             
-            # Busca comentários (amount=0 = todos)
-            comentarios = self.client.media_comments(media_id, amount=0)
+            media_id = self.client.media_pk_from_code(codigo_post)
+            comentarios_raw = self.client.media_comments(media_id, amount=max_comentarios)
             
-            comentarios_dados = []
-            
-            for comment in comentarios:
-                comentario_info = {
-                    "id": comment.pk,
-                    "usuario": comment.user.username,
-                    "nome_completo": comment.user.full_name,
-                    "texto": comment.text,
-                    "data": comment.created_at_utc.isoformat(),
-                    "likes": comment.like_count,
+            comentarios = []
+            for c in comentarios_raw:
+                comentario = {
+                    'id': str(c.pk),
+                    'texto': c.text,
+                    'autor': c.user.username,
+                    'likes': c.like_count,
+                    'data': c.created_at_utc.isoformat() if c.created_at_utc else None,
                 }
-                
-                comentarios_dados.append(comentario_info)
+                comentarios.append(comentario)
             
-            print(f"    ✅ {len(comentarios_dados)} comentários coletados")
-            return comentarios_dados
-            
-        except PleaseWaitFewMinutes:
-            print("    ⚠️  Instagram pediu para aguardar. Esperando 2 minutos...")
-            time.sleep(120)
-            return self.coletar_comentarios_post(media_id)
+            print(f"✅ {len(comentarios)} comentários coletados!")
+            return comentarios
             
         except Exception as e:
-            print(f"    ❌ Erro ao coletar comentários: {e}")
+            print(f"⚠️ Erro ao coletar comentários: {e}")
             return []
     
-    def coletar_tudo(self, username, num_posts=10):
-        """
-        Função principal: coleta posts + comentários
-        """
-        dados_completos = {
-            "perfil": None,
-            "data_coleta": datetime.now().isoformat(),
-            "conta_verificada_metricas": self.eh_conta_verificada,
-            "posts": []
-        }
-        
-        # 1. Informações do perfil
+    def coletar_tudo(self, username, num_posts=5):
+        """Coleta perfil + posts + comentários"""
         print(f"\n{'='*60}")
-        print(f"🎯 ANÁLISE DO PERFIL: @{username}")
-        print(f"{'='*60}")
+        print(f"🎯 COLETANDO DADOS DE @{username}")
+        print(f"{'='*60}\n")
         
-        perfil_info = self.buscar_perfil_info(username)
-        dados_completos["perfil"] = perfil_info
+        # Busca perfil
+        perfil = self.buscar_perfil(username)
         
-        if perfil_info:
-            print(f"\n📊 Seguidores: {perfil_info['seguidores']:,}")
-            print(f"📊 Posts totais: {perfil_info['total_posts']:,}")
-            if perfil_info['eh_verificado']:
-                print(f"✅ Conta verificada")
+        # Coleta posts
+        posts = self.coletar_posts(username, num_posts)
         
-        # 2. Posts recentes
-        posts = self.coletar_posts_recentes(username, num_posts)
-        
-        # 3. Comentários de cada post
-        print(f"\n{'='*60}")
-        print(f"💬 COLETANDO COMENTÁRIOS")
-        print(f"{'='*60}")
-        
-        for i, post in enumerate(posts, 1):
-            print(f"\n[{i}/{len(posts)}] Post: {post['url']}")
-            print(f"    ❤️  {post['likes']:,} likes | 💬 {post['comentarios_count']} comentários")
-            
-            # Coleta comentários
-            comentarios = self.coletar_comentarios_post(post['id'])
+        # Coleta comentários de cada post
+        for post in posts:
+            comentarios = self.coletar_comentarios(post['codigo'], CONFIG["MAX_COMENTARIOS_POR_POST"])
             post['comentarios'] = comentarios
-            
-            dados_completos["posts"].append(post)
-            
-            # Delay entre posts
-            if i < len(posts):
-                print(f"    ⏱️  Aguardando {CONFIG['DELAY_ENTRE_POSTS']}s...")
-                time.sleep(CONFIG["DELAY_ENTRE_POSTS"])
+            time.sleep(2)  # Pausa entre posts (segurança)
         
-        # Salva JSON backup se configurado
-        if CONFIG["SALVAR_JSON_BACKUP"]:
-            self._salvar_json_backup(dados_completos, username)
-        
-        return dados_completos
-    
-    def _salvar_json_backup(self, dados, username):
-        """Salva backup dos dados em JSON"""
-        import os
-        
-        dir_json = f"{CONFIG['DIR_OUTPUT']}/backup_json"
-        os.makedirs(dir_json, exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{dir_json}/{username}_{timestamp}.json"
-        
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(dados, f, ensure_ascii=False, indent=2)
-        
-        print(f"\n💾 Backup JSON salvo: {filename}")
-    
-    def _tipo_post_nome(self, tipo_num):
-        """Converte número do tipo para nome"""
-        tipos = {
-            1: "Foto",
-            2: "Vídeo",
-            8: "Carrossel"
+        resultado = {
+            'perfil': perfil,
+            'posts': posts
         }
-        return tipos.get(tipo_num, "Outro")
+        
+        print(f"\n{'='*60}")
+        print(f"✅ COLETA FINALIZADA!")
+        print(f"📊 {len(posts)} posts, {sum(len(p['comentarios']) for p in posts)} comentários")
+        print(f"{'='*60}\n")
+        
+        return resultado
 
 
-# ========================================
-# TESTE
-# ========================================
-
+# Teste rápido
 if __name__ == "__main__":
-    print("🧪 Teste do módulo coletor...")
-    
     coletor = ColetorInstagram()
     
-    if coletor.login():
-        print("\n✅ Login OK! Módulo funcionando.")
-    else:
-        print("\n❌ Erro no login. Verifique config.py")
+    if coletor.fazer_login():
+        dados = coletor.coletar_tudo("instagram", num_posts=2)
+        print(json.dumps(dados, indent=2, ensure_ascii=False))
