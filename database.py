@@ -35,13 +35,22 @@ class Database:
     def init_database(self):
         """Inicializa banco e cria tabelas"""
         schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
-        
-        with self.get_connection() as conn:
-            # Executa schema SQL
-            with open(schema_path, 'r', encoding='utf-8') as f:
-                conn.executescript(f.read())
-        
-        print(f"✅ Banco de dados inicializado: {self.db_path}")
+
+        if not os.path.exists(schema_path):
+            print(f"❌ ERRO: schema.sql não encontrado em {schema_path}")
+            raise FileNotFoundError(f"schema.sql não encontrado: {schema_path}")
+
+        try:
+            with self.get_connection() as conn:
+                # Executa schema SQL
+                with open(schema_path, 'r', encoding='utf-8') as f:
+                    schema_sql = f.read()
+                    conn.executescript(schema_sql)
+
+            print(f"✅ Banco de dados inicializado: {self.db_path}")
+        except Exception as e:
+            print(f"❌ Erro ao inicializar banco: {e}")
+            raise
     
     # ==========================================
     # PERFIS
