@@ -1,12 +1,26 @@
 """
 Configurações centralizadas do sistema
-Suporta: Local, Streamlit Cloud com PROXY RESIDENCIAL
-Versão 2.2 - Com debug melhorado
+Suporta: Local (.env), Streamlit Cloud (secrets) com PROXY RESIDENCIAL
+Versão 2.3 - Suporte a .env local
 """
 
 import os
 import json
 import tempfile
+from pathlib import Path
+
+# ============================================================================
+# CARREGA .ENV SE EXISTIR (USO LOCAL)
+# ============================================================================
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        print("✅ Arquivo .env carregado (modo local)")
+except ImportError:
+    # dotenv não instalado, tudo bem (Streamlit Cloud não precisa)
+    pass
 
 # Configurações padrão
 CONFIG = {

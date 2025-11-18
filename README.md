@@ -2,6 +2,18 @@
 
 Sistema completo de análise de comentários do Instagram usando GPT-4, com suporte a proxy residencial para evitar bloqueios.
 
+---
+
+## 🚀 INÍCIO RÁPIDO
+
+### Quer usar AGORA? (Rodando local)
+👉 **[GUIA_USO_LOCAL.md](GUIA_USO_LOCAL.md)** - Configure em 5 minutos!
+
+### Quer rodar na nuvem 24/7? (Streamlit Cloud)
+👉 **[GUIA_PROXY_RESIDENCIAL.md](GUIA_PROXY_RESIDENCIAL.md)** - Proxy residencial passo a passo!
+
+---
+
 ## ✨ Funcionalidades
 
 - 🔍 Coleta automática de posts e comentários do Instagram
