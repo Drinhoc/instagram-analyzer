@@ -158,13 +158,14 @@ class ColetorInstagram:
             posts = []
             for media in medias:
                 post = {
+                    'id': str(media.pk),  # ID único do post
                     'codigo': media.code,
                     'url': f"https://www.instagram.com/p/{media.code}/",
                     'tipo': media.media_type.name if hasattr(media.media_type, 'name') else str(media.media_type),
                     'caption': media.caption_text if media.caption_text else "",
                     'likes': media.like_count,
                     'comentarios_count': media.comment_count,
-                    'data_post': media.taken_at.isoformat() if media.taken_at else None,
+                    'data': media.taken_at.isoformat() if media.taken_at else None,  # database.py espera 'data'
                     'comentarios': []
                 }
                 posts.append(post)
@@ -189,7 +190,7 @@ class ColetorInstagram:
                 comentario = {
                     'id': str(c.pk),
                     'texto': c.text,
-                    'autor': c.user.username,
+                    'usuario': c.user.username,  # database.py espera 'usuario'
                     'likes': c.like_count,
                     'data': c.created_at_utc.isoformat() if c.created_at_utc else None,
                 }
