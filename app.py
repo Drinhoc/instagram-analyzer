@@ -185,11 +185,16 @@ with tab1:
 
             status_text.text("🔐 Fazendo login no Instagram...")
 
-            # Login do Instagram
-            import instagrapi
+            # Login do Instagram COM PROXY (usa ColetorInstagram!)
+            from coletor import ColetorInstagram
 
-            coletor_client = instagrapi.Client()
-            coletor_client.delay_range = [1, 3]
+            coletor_temp = ColetorInstagram()
+
+            # Mostra info de proxy
+            if CONFIG.get("PROXY_HOST"):
+                st.info(f"🌐 Usando proxy: {CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']}")
+            else:
+                st.warning("⚠️ ATENÇÃO: Rodando SEM proxy! Pode ser bloqueado.")
 
             try:
                 username = str(CONFIG.get("INSTAGRAM_USER", "")).strip()
@@ -199,8 +204,18 @@ with tab1:
                     st.error("❌ Credenciais Instagram vazias!")
                     st.stop()
 
-                coletor_client.login(username, password)
-                status_text.text("✅ Login realizado!")
+                # Usa o método fazer_login da classe ColetorInstagram
+                if not coletor_temp.fazer_login(username, password):
+                    st.error("❌ Erro no login do Instagram!")
+                    st.info("💡 Possíveis causas:")
+                    st.info("• IP bloqueado (configure proxy residencial)")
+                    st.info("• Credenciais incorretas")
+                    st.info("• Conta com checkpoint (verifique no app)")
+                    st.stop()
+
+                # Login OK! Usa o client configurado
+                coletor_client = coletor_temp.client
+                status_text.text("✅ Login realizado com sucesso!")
 
             except Exception as e:
                 st.error("❌ Erro no login do Instagram!")
@@ -209,6 +224,7 @@ with tab1:
                 with st.expander("🔍 Debug Info"):
                     st.write(f"Username length: {len(username) if username else 0}")
                     st.write(f"Password length: {len(password) if password else 0}")
+                    st.write(f"Proxy configurado: {bool(CONFIG.get('PROXY_HOST'))}")
                 st.stop()
 
             # Função auxiliar para coletar

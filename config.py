@@ -1,6 +1,7 @@
 """
 Configurações centralizadas do sistema
 Suporta: Local, Streamlit Cloud com PROXY RESIDENCIAL
+Versão 2.2 - Com debug melhorado
 """
 
 import os
@@ -30,10 +31,14 @@ CONFIG = {
     
     # Database
     "DATABASE_PATH": "instagram_analytics.db",
-    
+
     # Coleta
     "POSTS_ANALISAR": 5,
     "MAX_COMENTARIOS_POR_POST": 100,
+
+    # Análise GPT
+    "MODELO_GPT": "gpt-4o-mini",
+    "MAX_TOKENS": 300,
 }
 
 # ============================================================================
@@ -41,19 +46,27 @@ CONFIG = {
 # ============================================================================
 try:
     import streamlit as st
-    
+
+    print("🔧 Carregando configurações do Streamlit Cloud...")
+
     # Atualiza configs do Streamlit
     CONFIG["INSTAGRAM_USER"] = st.secrets.get("INSTAGRAM_USER", CONFIG["INSTAGRAM_USER"])
     CONFIG["INSTAGRAM_PASS"] = st.secrets.get("INSTAGRAM_PASS", CONFIG["INSTAGRAM_PASS"])
     CONFIG["OPENAI_KEY"] = st.secrets.get("OPENAI_KEY", CONFIG["OPENAI_KEY"])
     CONFIG["PLANILHA_ID"] = st.secrets.get("PLANILHA_ID", CONFIG["PLANILHA_ID"])
-    
+
     # PROXY (NOVO!)
     CONFIG["PROXY_HOST"] = st.secrets.get("PROXY_HOST", CONFIG["PROXY_HOST"])
     CONFIG["PROXY_PORT"] = st.secrets.get("PROXY_PORT", CONFIG["PROXY_PORT"])
     CONFIG["PROXY_USER"] = st.secrets.get("PROXY_USER", CONFIG["PROXY_USER"])
     CONFIG["PROXY_PASS"] = st.secrets.get("PROXY_PASS", CONFIG["PROXY_PASS"])
-    
+
+    # Debug de proxy
+    if CONFIG["PROXY_HOST"]:
+        print(f"✅ Proxy carregado: {CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']}")
+    else:
+        print("⚠️ Nenhum proxy configurado nos secrets!")
+
     # Google Credentials
     if "google_credentials" in st.secrets:
         credentials_data = dict(st.secrets["google_credentials"])
@@ -62,8 +75,11 @@ try:
             CONFIG["GOOGLE_CREDENTIALS_FILE"] = f.name
         print("✅ Google Credentials carregados do Streamlit!")
 
+    print("✅ Configurações do Streamlit carregadas com sucesso!")
+
 except ImportError:
-    # Não tá no Streamlit, tudo bem!
+    # Não tá no Streamlit, rodando local
+    print("Rodando local (nao e Streamlit Cloud)")
     pass
 
 # ============================================================================
@@ -87,32 +103,54 @@ def get_proxy_dict():
 # ============================================================================
 def validar_config():
     """Valida se todas as configurações necessárias estão presentes"""
+    print("\n" + "=" * 70)
+    print("🔍 VALIDANDO CONFIGURAÇÕES")
+    print("=" * 70)
+
     obrigatorias = [
         "INSTAGRAM_USER",
-        "INSTAGRAM_PASS", 
+        "INSTAGRAM_PASS",
         "OPENAI_KEY",
         "PLANILHA_ID"
     ]
-    
+
     faltando = []
     for key in obrigatorias:
-        if not CONFIG.get(key):
+        valor = CONFIG.get(key)
+        if not valor:
             faltando.append(key)
-    
+            print(f"❌ {key}: FALTANDO")
+        else:
+            # Mostra parcialmente para debug (sem expor credenciais completas)
+            if "PASS" in key or "KEY" in key:
+                print(f"✅ {key}: {'*' * 10} (configurado)")
+            else:
+                print(f"✅ {key}: {valor}")
+
     if faltando:
-        print(f"⚠️ Configurações faltando: {', '.join(faltando)}")
+        print(f"\n⚠️ Configurações faltando: {', '.join(faltando)}")
+        print("=" * 70 + "\n")
         return False
-    
+
+    # Verifica Google Credentials
     if not os.path.exists(CONFIG["GOOGLE_CREDENTIALS_FILE"]):
-        print(f"⚠️ Arquivo {CONFIG['GOOGLE_CREDENTIALS_FILE']} não encontrado!")
+        print(f"❌ GOOGLE_CREDENTIALS_FILE: Arquivo não encontrado!")
+        print(f"   Caminho: {CONFIG['GOOGLE_CREDENTIALS_FILE']}")
+        print("=" * 70 + "\n")
         return False
-    
-    # Verifica proxy
-    if get_proxy_dict():
-        print("✅ Proxy configurado!")
     else:
-        print("⚠️ Proxy NÃO configurado (opcional mas recomendado)")
-    
+        print(f"✅ GOOGLE_CREDENTIALS_FILE: OK")
+
+    # Verifica proxy (IMPORTANTE!)
+    proxy_dict = get_proxy_dict()
+    if proxy_dict:
+        print(f"✅ PROXY: Configurado ({CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']})")
+    else:
+        print("⚠️ PROXY: NÃO configurado")
+        print("   ⚠️ ATENÇÃO: Sem proxy, o Instagram pode bloquear seu IP!")
+        print("   💡 Configure PROXY_HOST, PROXY_PORT, PROXY_USER e PROXY_PASS")
+
+    print("=" * 70 + "\n")
     return True
 
 # Validação automática ao importar

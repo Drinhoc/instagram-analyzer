@@ -254,7 +254,7 @@ def main():
     print(f"🔐 Fazendo login no Instagram...")
     coletor = ColetorInstagram()
 
-    if not coletor.login():
+    if not coletor.fazer_login():
         print("❌ Erro no login. Verifique config.py")
         return
 

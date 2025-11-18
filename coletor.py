@@ -1,6 +1,6 @@
 """
 Módulo de coleta de dados do Instagram
-Versão 2.1 com PROXY CORRIGIDO
+Versão 2.2 com PROXY CORRIGIDO + Debug Logs
 """
 
 import instagrapi
@@ -8,6 +8,7 @@ from instagrapi import Client
 from instagrapi.exceptions import LoginRequired, ChallengeRequired
 import time
 import json
+import requests
 from datetime import datetime
 from config import CONFIG
 
@@ -20,6 +21,15 @@ class ColetorInstagram:
         self.client = Client()
         self.client.delay_range = [2, 5]
 
+        # Verifica IP ANTES do proxy
+        print("\n🌐 Verificando conexão...")
+        try:
+            ip_sem_proxy = requests.get("https://api.ipify.org", timeout=5).text
+            print(f"📍 Seu IP atual: {ip_sem_proxy}")
+        except Exception as e:
+            print(f"⚠️ Não foi possível verificar IP: {e}")
+            ip_sem_proxy = "desconhecido"
+
         # Configura proxy se disponível (MÉTODO CORRETO!)
         if all([CONFIG["PROXY_HOST"], CONFIG["PROXY_PORT"],
                 CONFIG["PROXY_USER"], CONFIG["PROXY_PASS"]]):
@@ -30,10 +40,33 @@ class ColetorInstagram:
             # Define proxy no client (forma correta!)
             self.client.set_proxy(proxy_url)
 
-            print(f"✅ Proxy configurado: {CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']}")
-            print(f"🔑 User: {CONFIG['PROXY_USER']}")
+            print(f"\n✅ Proxy configurado!")
+            print(f"   Host: {CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']}")
+            print(f"   User: {CONFIG['PROXY_USER']}")
+
+            # Testa proxy
+            try:
+                print("\n🔍 Testando proxy...")
+                proxy_dict = {
+                    "http": proxy_url,
+                    "https": proxy_url
+                }
+                ip_com_proxy = requests.get("https://api.ipify.org", proxies=proxy_dict, timeout=10).text
+                print(f"✅ Proxy funcionando!")
+                print(f"   IP sem proxy: {ip_sem_proxy}")
+                print(f"   IP COM proxy: {ip_com_proxy}")
+
+                if ip_sem_proxy != ip_com_proxy:
+                    print("✅ IPs diferentes! Proxy está ativo! 🎉")
+                else:
+                    print("⚠️ IPs iguais! Proxy pode não estar funcionando!")
+
+            except Exception as e:
+                print(f"⚠️ Erro ao testar proxy: {e}")
+                print("   Continuando mesmo assim...")
         else:
-            print("⚠️ Rodando SEM proxy (pode dar bloqueio!)")
+            print("\n⚠️ Rodando SEM proxy (pode dar bloqueio!)")
+            print("   Configure PROXY_HOST, PROXY_PORT, PROXY_USER e PROXY_PASS")
 
     def fazer_login(self, username=None, password=None):
         """Faz login no Instagram com tratamento de erros"""
