@@ -34,22 +34,132 @@ class Database:
     
     def init_database(self):
         """Inicializa banco e cria tabelas"""
-        schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
-
-        if not os.path.exists(schema_path):
-            print(f"❌ ERRO: schema.sql não encontrado em {schema_path}")
-            raise FileNotFoundError(f"schema.sql não encontrado: {schema_path}")
-
         try:
             with self.get_connection() as conn:
-                # Executa schema SQL
-                with open(schema_path, 'r', encoding='utf-8') as f:
-                    schema_sql = f.read()
-                    conn.executescript(schema_sql)
+                # Cria tabelas direto (mais confiável que ler arquivo)
+                conn.executescript("""
+                    -- Perfis monitorados
+                    CREATE TABLE IF NOT EXISTS perfis (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE NOT NULL,
+                        nome_completo TEXT,
+                        biografia TEXT,
+                        seguidores INTEGER,
+                        seguindo INTEGER,
+                        total_posts INTEGER,
+                        eh_comercial BOOLEAN DEFAULT 0,
+                        eh_verificado BOOLEAN DEFAULT 0,
+                        data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        data_ultima_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        ativo BOOLEAN DEFAULT 1
+                    );
+
+                    -- Posts coletados
+                    CREATE TABLE IF NOT EXISTS posts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        perfil_id INTEGER NOT NULL,
+                        post_id TEXT UNIQUE NOT NULL,
+                        codigo TEXT NOT NULL,
+                        url TEXT NOT NULL,
+                        tipo TEXT,
+                        caption TEXT,
+                        likes INTEGER DEFAULT 0,
+                        comentarios_count INTEGER DEFAULT 0,
+                        visualizacoes INTEGER DEFAULT 0,
+                        alcance INTEGER,
+                        impressoes INTEGER,
+                        salvamentos INTEGER,
+                        data_post TIMESTAMP NOT NULL,
+                        data_coleta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        data_ultima_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        analisado BOOLEAN DEFAULT 0,
+                        FOREIGN KEY (perfil_id) REFERENCES perfis(id)
+                    );
+
+                    -- Comentários
+                    CREATE TABLE IF NOT EXISTS comentarios (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        post_id INTEGER NOT NULL,
+                        comentario_id TEXT UNIQUE NOT NULL,
+                        usuario TEXT NOT NULL,
+                        nome_completo TEXT,
+                        texto TEXT NOT NULL,
+                        likes INTEGER DEFAULT 0,
+                        data_comentario TIMESTAMP NOT NULL,
+                        data_coleta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        data_ultima_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        analisado BOOLEAN DEFAULT 0,
+                        deletado BOOLEAN DEFAULT 0,
+                        editado BOOLEAN DEFAULT 0,
+                        FOREIGN KEY (post_id) REFERENCES posts(id)
+                    );
+
+                    -- Análises GPT
+                    CREATE TABLE IF NOT EXISTS analises (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        comentario_id INTEGER UNIQUE NOT NULL,
+                        sentimento TEXT,
+                        categoria TEXT,
+                        topico TEXT,
+                        urgencia TEXT,
+                        intent TEXT,
+                        palavras_chave TEXT,
+                        resumo TEXT,
+                        sugestao_resposta TEXT,
+                        resposta_sugerida TEXT,
+                        custo_gpt REAL DEFAULT 0,
+                        data_analise TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (comentario_id) REFERENCES comentarios(id)
+                    );
+
+                    -- Execuções
+                    CREATE TABLE IF NOT EXISTS execucoes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        perfil_id INTEGER NOT NULL,
+                        tipo TEXT,
+                        posts_processados INTEGER DEFAULT 0,
+                        comentarios_novos INTEGER DEFAULT 0,
+                        comentarios_atualizados INTEGER DEFAULT 0,
+                        analises_realizadas INTEGER DEFAULT 0,
+                        custo_total_gpt REAL DEFAULT 0,
+                        data_inicio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        data_fim TIMESTAMP,
+                        duracao_segundos INTEGER,
+                        status TEXT DEFAULT 'em_andamento',
+                        mensagem_erro TEXT,
+                        planilha_url TEXT,
+                        FOREIGN KEY (perfil_id) REFERENCES perfis(id)
+                    );
+
+                    -- Alertas
+                    CREATE TABLE IF NOT EXISTS alertas (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        execucao_id INTEGER NOT NULL,
+                        comentario_id INTEGER,
+                        tipo TEXT NOT NULL,
+                        descricao TEXT NOT NULL,
+                        severidade INTEGER DEFAULT 1,
+                        resolvido BOOLEAN DEFAULT 0,
+                        data_alerta TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        data_resolucao TIMESTAMP,
+                        FOREIGN KEY (execucao_id) REFERENCES execucoes(id),
+                        FOREIGN KEY (comentario_id) REFERENCES comentarios(id)
+                    );
+
+                    -- Índices para performance
+                    CREATE INDEX IF NOT EXISTS idx_posts_perfil ON posts(perfil_id);
+                    CREATE INDEX IF NOT EXISTS idx_posts_data ON posts(data_post);
+                    CREATE INDEX IF NOT EXISTS idx_comentarios_post ON comentarios(post_id);
+                    CREATE INDEX IF NOT EXISTS idx_comentarios_data ON comentarios(data_comentario);
+                    CREATE INDEX IF NOT EXISTS idx_comentarios_analisado ON comentarios(analisado);
+                    CREATE INDEX IF NOT EXISTS idx_analises_comentario ON analises(comentario_id);
+                """)
 
             print(f"✅ Banco de dados inicializado: {self.db_path}")
         except Exception as e:
             print(f"❌ Erro ao inicializar banco: {e}")
+            import traceback
+            traceback.print_exc()
             raise
     
     # ==========================================
