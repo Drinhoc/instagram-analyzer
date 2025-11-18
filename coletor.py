@@ -133,7 +133,7 @@ class ColetorInstagram:
                 'seguidores': user_info.follower_count,
                 'seguindo': user_info.following_count,
                 'total_posts': user_info.media_count,
-                'foto_perfil': user_info.profile_pic_url.unicode_string() if user_info.profile_pic_url else None,
+                'foto_perfil': str(user_info.profile_pic_url) if user_info.profile_pic_url else None,
                 'verificado': user_info.is_verified,
                 'privado': user_info.is_private,
             }
