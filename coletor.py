@@ -128,13 +128,14 @@ class ColetorInstagram:
 
             perfil = {
                 'username': user_info.username,
-                'full_name': user_info.full_name,
-                'bio': user_info.biography,
+                'nome_completo': user_info.full_name,  # database.py espera 'nome_completo'
+                'biografia': user_info.biography,  # database.py espera 'biografia'
                 'seguidores': user_info.follower_count,
                 'seguindo': user_info.following_count,
                 'total_posts': user_info.media_count,
                 'foto_perfil': str(user_info.profile_pic_url) if user_info.profile_pic_url else None,
-                'verificado': user_info.is_verified,
+                'eh_verificado': user_info.is_verified,  # database.py espera 'eh_verificado'
+                'eh_comercial': user_info.is_business if hasattr(user_info, 'is_business') else False,  # database.py espera 'eh_comercial'
                 'privado': user_info.is_private,
             }
 
