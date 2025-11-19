@@ -1,182 +1,135 @@
 """
-Configurações centralizadas do sistema
-Suporta: Local (.env), Streamlit Cloud (secrets) com PROXY RESIDENCIAL
-Versão 2.3 - Suporte a .env local
-"""
+Módulo responsável por carregar as configurações do projeto de forma híbrida:
+1. Tenta carregar do Streamlit Secrets (Modo Nuvem)
+2. Se falhar, carrega do arquivo .env (Modo Local)
 
+O dicionário CONFIG será usado por todo o seu projeto.
+"""
 import os
 import sys
-import json
-import tempfile
-from pathlib import Path
 
-# Fix encoding no Windows
-if sys.platform == 'win32':
-    import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
-
-# ============================================================================
-# CARREGA .ENV SE EXISTIR (USO LOCAL)
-# ============================================================================
-try:
-    from dotenv import load_dotenv
-    env_path = Path(__file__).parent / '.env'
-    if env_path.exists():
-        load_dotenv(env_path)
-        print("✅ Arquivo .env carregado (modo local)")
-except ImportError:
-    # dotenv não instalado, tudo bem (Streamlit Cloud não precisa)
-    pass
-
-# Configurações padrão
-CONFIG = {
-    # Instagram
-    "INSTAGRAM_USER": os.getenv("INSTAGRAM_USER", ""),
-    "INSTAGRAM_PASS": os.getenv("INSTAGRAM_PASS", ""),
-    
-    # OpenAI
-    "OPENAI_KEY": os.getenv("OPENAI_KEY", ""),
-    
-    # Google Sheets
-    "PLANILHA_ID": os.getenv("PLANILHA_ID", ""),
-    
-    # PROXY RESIDENCIAL (NOVO!)
-    "PROXY_HOST": os.getenv("PROXY_HOST", ""),  # Ex: p.webshare.io
-    "PROXY_PORT": os.getenv("PROXY_PORT", ""),  # Ex: 80
-    "PROXY_USER": os.getenv("PROXY_USER", ""),  # Ex: meuuser-rotate
-    "PROXY_PASS": os.getenv("PROXY_PASS", ""),  # Ex: minhasenha123
-    
-    # Google Credentials
-    "GOOGLE_CREDENTIALS_FILE": "credentials.json",
-    
-    # Database
-    "DATABASE_PATH": "instagram_analytics.db",
-
-    # Coleta
-    "POSTS_ANALISAR": 5,
-    "MAX_COMENTARIOS_POR_POST": 100,
-
-    # Análise GPT
-    "MODELO_GPT": "gpt-4o-mini",
-    "MAX_TOKENS": 300,
-}
-
-# ============================================================================
-# STREAMLIT CLOUD: Carrega do st.secrets
-# ============================================================================
+# Tenta importar Streamlit para o modo nuvem. Se falhar, estamos no local.
 try:
     import streamlit as st
-
-    print("🔧 Carregando configurações do Streamlit Cloud...")
-
-    # Atualiza configs do Streamlit
-    CONFIG["INSTAGRAM_USER"] = st.secrets.get("INSTAGRAM_USER", CONFIG["INSTAGRAM_USER"])
-    CONFIG["INSTAGRAM_PASS"] = st.secrets.get("INSTAGRAM_PASS", CONFIG["INSTAGRAM_PASS"])
-    CONFIG["OPENAI_KEY"] = st.secrets.get("OPENAI_KEY", CONFIG["OPENAI_KEY"])
-    CONFIG["PLANILHA_ID"] = st.secrets.get("PLANILHA_ID", CONFIG["PLANILHA_ID"])
-
-    # PROXY (NOVO!)
-    CONFIG["PROXY_HOST"] = st.secrets.get("PROXY_HOST", CONFIG["PROXY_HOST"])
-    CONFIG["PROXY_PORT"] = st.secrets.get("PROXY_PORT", CONFIG["PROXY_PORT"])
-    CONFIG["PROXY_USER"] = st.secrets.get("PROXY_USER", CONFIG["PROXY_USER"])
-    CONFIG["PROXY_PASS"] = st.secrets.get("PROXY_PASS", CONFIG["PROXY_PASS"])
-
-    # Debug de proxy
-    if CONFIG["PROXY_HOST"]:
-        print(f"✅ Proxy carregado: {CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']}")
-    else:
-        print("⚠️ Nenhum proxy configurado nos secrets!")
-
-    # Google Credentials
-    if "google_credentials" in st.secrets:
-        credentials_data = dict(st.secrets["google_credentials"])
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(credentials_data, f)
-            CONFIG["GOOGLE_CREDENTIALS_FILE"] = f.name
-        print("✅ Google Credentials carregados do Streamlit!")
-
-    print("✅ Configurações do Streamlit carregadas com sucesso!")
-
 except ImportError:
-    # Não tá no Streamlit, rodando local
-    print("Rodando local (nao e Streamlit Cloud)")
-    pass
+    st = None
 
-# ============================================================================
-# HELPER: Monta URL do proxy
-# ============================================================================
-def get_proxy_dict():
-    """Retorna dict de proxy formatado para requests/instagrapi"""
-    if not all([CONFIG["PROXY_HOST"], CONFIG["PROXY_PORT"], 
-                CONFIG["PROXY_USER"], CONFIG["PROXY_PASS"]]):
-        return None
-    
-    proxy_url = f"http://{CONFIG['PROXY_USER']}:{CONFIG['PROXY_PASS']}@{CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']}"
-    
-    return {
-        "http": proxy_url,
-        "https": proxy_url
-    }
+from dotenv import load_dotenv
 
-# ============================================================================
-# VALIDAÇÃO
-# ============================================================================
-def validar_config():
-    """Valida se todas as configurações necessárias estão presentes"""
+# Dicionário de configurações global
+CONFIG = {}
+IS_CLOUD_MODE = False
+
+# =================================================================
+# VARIÁVEIS DE AMBIENTE E SECRETS (CHAVES)
+# =================================================================
+
+# Lista de chaves simples que devem estar no .env ou no st.secrets
+VARIAVEIS_SIMPLES = [
+    "INSTAGRAM_USER",
+    "INSTAGRAM_PASS",
+    "OPENAI_KEY",
+    "PLANILHA_ID",
+    "PROXY_HOST",
+    "PROXY_PORT",
+    "PROXY_USER",
+    "PROXY_PASS",
+]
+
+# Variáveis do seu projeto que têm valores fixos ou defaults
+VARIAVEIS_PROJETO = {
+    "DATABASE_PATH": "instagram_analytics.db",
+    "GOOGLE_CREDENTIALS_FILE": "google_credentials.json", # Apenas para o modo local
+    "PERFIS_ALVO": ["@doptex", "@admiravelcafe", "@descealetrashow"],
+    "POSTS_ANALISAR": 20,
+    "DEBUG": False,
+}
+
+# =================================================================
+# LÓGICA DE CARREGAMENTO HÍBRIDO
+# =================================================================
+
+def load_config():
+    """Carrega as configurações do Streamlit Secrets ou do .env."""
+    global CONFIG, IS_CLOUD_MODE
+    
+    # 1. Modo Streamlit Cloud (st.secrets)
+    if st and st.secrets:
+        
+        # Indica que estamos na nuvem
+        IS_CLOUD_MODE = True
+        
+        # Carrega variáveis simples
+        for var in VARIAVEIS_SIMPLES:
+            CONFIG[var] = st.secrets.get(var)
+
+        # Carrega a tabela TOML do Google Sheets
+        CONFIG['GSPREAD_CREDENTIALS'] = st.secrets.get("gspread")
+        
+        print("✅ Configurações carregadas do Streamlit Secrets (Modo Nuvem)!")
+        
+    # 2. Modo Local (.env)
+    else:
+        
+        # Carrega .env do disco
+        load_dotenv()
+        
+        # Carrega variáveis simples
+        for var in VARIAVEIS_SIMPLES:
+            CONFIG[var] = os.getenv(var)
+        
+        # No modo local, o GSPREAD usa o arquivo.
+        CONFIG['GSPREAD_CREDENTIALS'] = None # O GeradorRelatorioSheets deve buscar o arquivo
+        
+        print("✅ Configurações carregadas do .env (Modo Local)!")
+        
+    # Adiciona variáveis fixas do projeto
+    CONFIG.update(VARIAVEIS_PROJETO)
+
+    # Verifica se as variáveis críticas estão carregadas
+    _check_critical_config()
+    
+    return CONFIG
+
+
+def _check_critical_config():
+    """Verifica e printa o status das configurações críticas."""
     print("\n" + "=" * 70)
     print("🔍 VALIDANDO CONFIGURAÇÕES")
     print("=" * 70)
-
-    obrigatorias = [
-        "INSTAGRAM_USER",
-        "INSTAGRAM_PASS",
-        "OPENAI_KEY",
-        "PLANILHA_ID"
+    
+    # Lista de chaves críticas para validação de print
+    chaves_criticas = [
+        ("INSTAGRAM_USER", "✅ INSTAGRAM_USER"),
+        ("INSTAGRAM_PASS", "✅ INSTAGRAM_PASS (configurado)"),
+        ("OPENAI_KEY", "✅ OPENAI_KEY (configurado)"),
+        ("PLANILHA_ID", "✅ PLANILHA_ID"),
+        ("PROXY_HOST", "✅ PROXY: Configurado")
     ]
-
-    faltando = []
-    for key in obrigatorias:
-        valor = CONFIG.get(key)
-        if not valor:
-            faltando.append(key)
-            print(f"❌ {key}: FALTANDO")
+    
+    for key, msg in chaves_criticas:
+        value = CONFIG.get(key)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            print(f"❌ {msg.replace('✅', '❌')}: FALHOU!")
+            if key == "INSTAGRAM_PASS":
+                # Aqui você pode interromper se uma chave crítica falhar
+                print("ERRO: Configuração Crítica faltando. O script irá falhar.")
         else:
-            # Mostra parcialmente para debug (sem expor credenciais completas)
-            if "PASS" in key or "KEY" in key:
-                print(f"✅ {key}: {'*' * 10} (configurado)")
-            else:
-                print(f"✅ {key}: {valor}")
+            print(f"{msg}: {value[:8]}..." if "configurado" in msg and len(value) > 8 else msg)
 
-    if faltando:
-        print(f"\n⚠️ Configurações faltando: {', '.join(faltando)}")
-        print("=" * 70 + "\n")
-        return False
-
-    # Verifica Google Credentials
-    if not os.path.exists(CONFIG["GOOGLE_CREDENTIALS_FILE"]):
-        print(f"❌ GOOGLE_CREDENTIALS_FILE: Arquivo não encontrado!")
-        print(f"   Caminho: {CONFIG['GOOGLE_CREDENTIALS_FILE']}")
-        print("=" * 70 + "\n")
-        return False
+    # Validando Google Sheets (diferente por ambiente)
+    if IS_CLOUD_MODE:
+        status_sheets = "✅ GOOGLE_CREDENTIALS: OK (Streamlit Secrets)" if CONFIG.get('GSPREAD_CREDENTIALS') else "❌ GOOGLE_CREDENTIALS: FALHOU!"
     else:
-        print(f"✅ GOOGLE_CREDENTIALS_FILE: OK")
+        status_sheets = "✅ GOOGLE_CREDENTIALS_FILE: OK" if os.path.exists(CONFIG["GOOGLE_CREDENTIALS_FILE"]) else "⚠️ GOOGLE_CREDENTIALS_FILE: ARQUIVO LOCAL FALTANDO"
+    
+    print(status_sheets)
 
-    # Verifica proxy (IMPORTANTE!)
-    proxy_dict = get_proxy_dict()
-    if proxy_dict:
-        print(f"✅ PROXY: Configurado ({CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']})")
-    else:
-        print("⚠️ PROXY: NÃO configurado")
-        print("   ⚠️ ATENÇÃO: Sem proxy, o Instagram pode bloquear seu IP!")
-        print("   💡 Configure PROXY_HOST, PROXY_PORT, PROXY_USER e PROXY_PASS")
+    print("=" * 70)
+    print("✅ Todas as configurações OK!" if all(CONFIG.get(k[0]) for k in chaves_criticas) else "⚠️ Configurações Críticas Faltando!")
 
-    print("=" * 70 + "\n")
-    return True
+# Executa o carregamento imediatamente
+load_config()
 
-# Validação automática ao importar
-if __name__ != "__main__":
-    if validar_config():
-        print("✅ Todas as configurações OK!")
-    else:
-        print("❌ Erro nas configurações!")
+# Acessa o CONFIG (dicionário final) fora do módulo (ex: em main.py)
+# from config_loader import CONFIG
