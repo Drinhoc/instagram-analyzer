@@ -5,9 +5,16 @@ Versão 2.3 - Suporte a .env local
 """
 
 import os
+import sys
 import json
 import tempfile
 from pathlib import Path
+
+# Fix encoding no Windows
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 # ============================================================================
 # CARREGA .ENV SE EXISTIR (USO LOCAL)

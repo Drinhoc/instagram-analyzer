@@ -1,6 +1,6 @@
 """
 Módulo de coleta de dados do Instagram
-Versão 2.2 com PROXY CORRIGIDO + Debug Logs
+Versão 2.3 - Mensagens mais claras e logs otimizados
 """
 
 import instagrapi
@@ -9,8 +9,12 @@ from instagrapi.exceptions import LoginRequired, ChallengeRequired
 import time
 import json
 import requests
+import logging
 from datetime import datetime
 from config import CONFIG
+
+# Suprime logs verbosos do instagrapi (mostra só erros críticos)
+logging.getLogger("instagrapi").setLevel(logging.ERROR)
 
 
 class ColetorInstagram:
@@ -152,12 +156,14 @@ class ColetorInstagram:
 
         try:
             print(f"📸 Coletando {quantidade} posts de @{username}...")
+            print(f"   ⏳ Buscando posts (pode levar 10-30 segundos)...")
 
             user_id = self.client.user_id_from_username(username)
             medias = self.client.user_medias(user_id, amount=quantidade)
 
             posts = []
-            for media in medias:
+            for i, media in enumerate(medias, 1):
+                print(f"   📄 Post {i}/{len(medias)}: {media.code}", end='\r')
                 post = {
                     'id': str(media.pk),  # ID único do post
                     'codigo': media.code,
@@ -171,17 +177,17 @@ class ColetorInstagram:
                 }
                 posts.append(post)
 
-            print(f"✅ {len(posts)} posts coletados!")
+            print(f"\n✅ {len(posts)} posts coletados com sucesso!        ")
             return posts
 
         except Exception as e:
-            print(f"❌ Erro ao coletar posts: {e}")
+            print(f"\n❌ Erro ao coletar posts: {e}")
             raise
 
     def coletar_comentarios(self, codigo_post, max_comentarios=100):
         """Coleta comentários de um post"""
         try:
-            print(f"💬 Coletando comentários do post {codigo_post}...")
+            print(f"💬 Coletando comentários do post {codigo_post}...", end='', flush=True)
 
             media_id = self.client.media_pk_from_code(codigo_post)
             comentarios_raw = self.client.media_comments(media_id, amount=max_comentarios)
