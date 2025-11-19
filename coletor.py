@@ -73,7 +73,15 @@ class ColetorInstagram:
             print("   Configure PROXY_HOST, PROXY_PORT, PROXY_USER e PROXY_PASS")
 
     def fazer_login(self, username=None, password=None):
-        """Faz login no Instagram com tratamento de erros"""
+        """Faz login no Instagram com tratamento de erros
+
+        Returns:
+            True se login OK
+            False se login falhou
+
+        Raises:
+            Exception com mensagem descritiva se houver erro
+        """
         username = username or CONFIG["INSTAGRAM_USER"]
         password = password or CONFIG["INSTAGRAM_PASS"]
 
@@ -95,32 +103,50 @@ class ColetorInstagram:
             return True
 
         except ChallengeRequired as e:
-            print(f"⚠️ Instagram pediu verificação: {e}")
+            erro = f"Instagram pediu verificação de segurança (Challenge Required): {e}"
+            print(f"⚠️ {erro}")
             print("💡 Entre no Instagram pelo app/navegador e confirme que é você!")
-            return False
+            raise Exception(f"CHALLENGE_REQUIRED: {erro}")
 
         except LoginRequired as e:
-            print(f"❌ Erro de login: {e}")
+            erro = f"Erro de autenticação (Login Required): {e}"
+            print(f"❌ {erro}")
             print("💡 Verifique suas credenciais!")
-            return False
+            raise Exception(f"LOGIN_REQUIRED: {erro}")
 
         except Exception as e:
             erro_msg = str(e).lower()
 
             if "checkpoint" in erro_msg or "challenge" in erro_msg:
-                print(f"⚠️ Conta com checkpoint/verificação!")
+                erro = f"Conta com checkpoint/verificação: {e}"
+                print(f"⚠️ {erro}")
                 print("💡 Resolva no app do Instagram primeiro!")
+                raise Exception(f"CHECKPOINT: {erro}")
+
             elif "ip" in erro_msg or "blacklist" in erro_msg:
-                print(f"⚠️ IP bloqueado!")
+                erro = f"IP bloqueado pelo Instagram: {e}"
+                print(f"⚠️ {erro}")
                 if CONFIG.get("PROXY_HOST"):
                     print("💡 Proxy configurado mas ainda bloqueado!")
-                    print("💡 Tente proxy RESIDENCIAL ou aguardar!")
+                    print("💡 Verifique se o proxy está funcionando ou tente outro!")
                 else:
                     print("💡 CONFIGURE UM PROXY RESIDENCIAL!")
-            else:
-                print(f"❌ Erro desconhecido: {e}")
+                raise Exception(f"IP_BLOCKED: {erro}")
 
-            return False
+            elif "password" in erro_msg or "credentials" in erro_msg:
+                erro = f"Credenciais incorretas: {e}"
+                print(f"❌ {erro}")
+                raise Exception(f"BAD_CREDENTIALS: {erro}")
+
+            elif "two" in erro_msg and "factor" in erro_msg:
+                erro = f"Autenticação de 2 fatores ativada: {e}"
+                print(f"❌ {erro}")
+                raise Exception(f"TWO_FACTOR: {erro}")
+
+            else:
+                erro = f"Erro desconhecido no login: {e}"
+                print(f"❌ {erro}")
+                raise Exception(f"UNKNOWN_ERROR: {erro}")
 
     def buscar_perfil(self, username):
         """Busca informações do perfil"""

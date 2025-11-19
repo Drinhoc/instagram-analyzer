@@ -131,7 +131,7 @@ with st.sidebar:
     """)
 
 # Main content
-tab1, tab2 = st.tabs(["🎯 Análise Rápida", "📈 Histórico"])
+tab1, tab2, tab3 = st.tabs(["🎯 Análise Rápida", "📈 Histórico", "🔍 Diagnóstico"])
 
 with tab1:
     st.markdown("## 🎯 Análise Rápida")
@@ -185,46 +185,118 @@ with tab1:
 
             status_text.text("🔐 Fazendo login no Instagram...")
 
+            # ============================================================================
+            # DEBUG: Mostra info de configuração (sem expor credenciais completas)
+            # ============================================================================
+            with st.expander("🔍 Informações de Configuração", expanded=False):
+                username = str(CONFIG.get("INSTAGRAM_USER", "")).strip()
+                password = str(CONFIG.get("INSTAGRAM_PASS", "")).strip()
+                proxy_host = CONFIG.get("PROXY_HOST", "")
+                proxy_port = CONFIG.get("PROXY_PORT", "")
+
+                st.write("**Credenciais Instagram:**")
+                st.write(f"• Username: {username[:5]}...{username[-5:] if len(username) > 10 else ''} ({len(username)} chars)")
+                st.write(f"• Password: {'*' * min(len(password), 10)} ({len(password)} chars)")
+
+                st.write("\n**Proxy:**")
+                if proxy_host and proxy_port:
+                    st.write(f"• ✅ Configurado: {proxy_host}:{proxy_port}")
+                else:
+                    st.write("• ❌ NÃO configurado!")
+
+                st.write("\n**Ambiente:**")
+                st.write(f"• Streamlit version: {st.__version__}")
+                st.write(f"• Python version: {sys.version.split()[0]}")
+
             # Login do Instagram COM PROXY (usa ColetorInstagram!)
             from coletor import ColetorInstagram
+            import logging
 
-            coletor_temp = ColetorInstagram()
-
-            # Mostra info de proxy
-            if CONFIG.get("PROXY_HOST"):
-                st.info(f"🌐 Usando proxy: {CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']}")
-            else:
-                st.warning("⚠️ ATENÇÃO: Rodando SEM proxy! Pode ser bloqueado.")
+            # Captura logs do coletor para mostrar no Streamlit
+            log_container = st.empty()
 
             try:
+                # Mostra info de proxy
+                if CONFIG.get("PROXY_HOST"):
+                    st.success(f"🌐 Proxy configurado: {CONFIG['PROXY_HOST']}:{CONFIG['PROXY_PORT']}")
+                else:
+                    st.error("❌ PROXY NÃO CONFIGURADO!")
+                    st.error("⚠️ No Streamlit Cloud, login SEM proxy provavelmente falhará!")
+                    st.info("💡 Configure PROXY_HOST, PROXY_PORT, PROXY_USER, PROXY_PASS no Streamlit Secrets")
+                    st.stop()
+
                 username = str(CONFIG.get("INSTAGRAM_USER", "")).strip()
                 password = str(CONFIG.get("INSTAGRAM_PASS", "")).strip()
 
                 if not username or not password:
                     st.error("❌ Credenciais Instagram vazias!")
+                    st.error(f"Username: {len(username)} chars, Password: {len(password)} chars")
+                    st.info("💡 Verifique se INSTAGRAM_USER e INSTAGRAM_PASS estão configurados no Streamlit Secrets")
                     st.stop()
 
+                log_container.info("🔄 Inicializando cliente Instagram...")
+                coletor_temp = ColetorInstagram()
+
+                log_container.info(f"🔑 Tentando login como {username[:10]}...")
+
                 # Usa o método fazer_login da classe ColetorInstagram
-                if not coletor_temp.fazer_login(username, password):
-                    st.error("❌ Erro no login do Instagram!")
-                    st.info("💡 Possíveis causas:")
-                    st.info("• IP bloqueado (configure proxy residencial)")
-                    st.info("• Credenciais incorretas")
-                    st.info("• Conta com checkpoint (verifique no app)")
-                    st.stop()
+                # Agora lança exceção se falhar (em vez de retornar False)
+                coletor_temp.fazer_login(username, password)
 
                 # Login OK! Usa o client configurado
                 coletor_client = coletor_temp.client
+                log_container.success("✅ Login realizado com sucesso!")
                 status_text.text("✅ Login realizado com sucesso!")
 
             except Exception as e:
-                st.error("❌ Erro no login do Instagram!")
-                st.error(f"Detalhes: {str(e)}")
-                st.info("💡 Verifique as credenciais nas variáveis de ambiente / secrets.")
-                with st.expander("🔍 Debug Info"):
+                st.error("❌ ERRO CRÍTICO no login do Instagram!")
+                st.error(f"**Tipo do erro:** {type(e).__name__}")
+                st.error(f"**Mensagem:** {str(e)}")
+
+                # Analisa o erro e dá dicas específicas
+                erro_str = str(e).lower()
+
+                st.markdown("### 💡 Diagnóstico:")
+
+                if "checkpoint" in erro_str or "challenge" in erro_str:
+                    st.warning("🚨 **Conta com checkpoint/desafio de segurança**")
+                    st.info("Acesse instagram.com pelo navegador e resolva a verificação")
+
+                elif "login" in erro_str or "password" in erro_str:
+                    st.warning("🔑 **Erro de autenticação**")
+                    st.info("Verifique se as credenciais estão corretas no Streamlit Secrets")
+
+                elif "proxy" in erro_str or "connection" in erro_str:
+                    st.warning("🌐 **Erro de conexão/proxy**")
+                    st.info("Verifique se o proxy está configurado corretamente")
+                    st.info("Formato esperado: host=p.webshare.io, port=80, user=xxxx, pass=xxxx")
+
+                elif "ip" in erro_str or "block" in erro_str or "spam" in erro_str:
+                    st.warning("🚫 **IP bloqueado pelo Instagram**")
+                    st.error("Instagram bloqueou o IP do Streamlit Cloud!")
+                    st.success("✅ **SOLUÇÃO:** Configure proxy residencial no Streamlit Secrets")
+
+                elif "timeout" in erro_str:
+                    st.warning("⏱️ **Timeout de conexão**")
+                    st.info("Instagram demorou demais para responder. Tente novamente.")
+
+                else:
+                    st.warning("❓ **Erro desconhecido**")
+                    st.info("Veja o traceback completo abaixo")
+
+                with st.expander("🐛 Traceback completo (para debug)"):
+                    import traceback
+                    st.code(traceback.format_exc())
+
+                with st.expander("🔍 Informações do ambiente"):
                     st.write(f"Username length: {len(username) if username else 0}")
                     st.write(f"Password length: {len(password) if password else 0}")
                     st.write(f"Proxy configurado: {bool(CONFIG.get('PROXY_HOST'))}")
+                    st.write(f"PROXY_HOST: {CONFIG.get('PROXY_HOST', 'NÃO CONFIGURADO')}")
+                    st.write(f"PROXY_PORT: {CONFIG.get('PROXY_PORT', 'NÃO CONFIGURADO')}")
+                    st.write(f"Streamlit version: {st.__version__}")
+                    st.write(f"Python version: {sys.version}")
+
                 st.stop()
 
             # Função auxiliar para coletar
@@ -410,6 +482,10 @@ with tab2:
 
     except Exception as e:
         st.warning(f"⚠️ Erro ao carregar histórico: {str(e)}")
+
+with tab3:
+    from pagina_diagnostico import pagina_diagnostico
+    pagina_diagnostico()
 
 # Footer
 st.markdown("---")
